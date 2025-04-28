@@ -1,0 +1,13 @@
+---
+services:
+  pybeemo:
+    container_name: pybeemo
+    restart: always
+    image: ramiuslr/pybeemo:latest # You should set this tag to a fixed version
+    ports:
+      - 8000:8000
+    environment:
+      PYBEEMO_USER: <username>
+      PYBEEMO_PASSWORD: <password>
+      # PYBEEMO_INTERVAL: optional, defaults to 30 mins
+...
