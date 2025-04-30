@@ -2,12 +2,12 @@
 
 import http.server
 import io
+import logging
 import os
 import signal
 import socketserver
 import sys
 import time
-import logging
 from datetime import datetime
 from threading import Lock, Thread
 
@@ -16,20 +16,23 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from requests import Session
 
-
 # Configure logging system
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 
 # Enable quick restart in docker
 app = FastAPI()
+
+
 def shutdown_handler(signum, frame):
     logging.info("Received shutdown signal")
     sys.exit(0)
+
+
 signal.signal(signal.SIGTERM, shutdown_handler)
 signal.signal(signal.SIGINT, shutdown_handler)
 
