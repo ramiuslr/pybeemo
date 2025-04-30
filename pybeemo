@@ -15,24 +15,24 @@ from requests import Session
 
 # Global variables
 data_lock = Lock()
-csv_data = {"licenses": None, "backupsets": None, "groups": None}
+data = {"licenses": None, "backupsets": None, "groups": None}
 
 
 class BeemoHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         with data_lock:
-            if self.path == "/licenses.csv":
-                self.serve_csv(csv_data["licenses"])
-            elif self.path == "/backupsets.csv":
-                self.serve_csv(csv_data["backupsets"])
-            elif self.path == "/groups.csv":
-                self.serve_csv(csv_data["groups"])
+            if self.path == "/licenses":
+                self.serve_data(data["licenses"])
+            elif self.path == "/backupsets":
+                self.serve_data(data["backupsets"])
+            elif self.path == "/groups":
+                self.serve_data(data["groups"])
             else:
                 self.send_response(404)
                 self.end_headers()
                 self.wfile.write(b"File not found")
 
-    def serve_csv(self, data):
+    def serve_data(self, data):
         if data is None:
             self.send_response(503)
             self.send_header("Content-type", "text/plain")
@@ -41,11 +41,11 @@ class BeemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         self.send_response(200)
-        self.send_header("Content-type", "text/csv")
-        self.send_header(
-            "Content-Disposition", "attachment; filename=" + self.path[1:]
-        )
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-type", "application/json")
+        # self.send_header(
+        #     "Content-Disposition", "attachment; filename=" + self.path[1:]
+        # )
+        # self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data.encode("utf-8"))
 
@@ -86,9 +86,9 @@ def main():
     with socketserver.TCPServer(("", port), Handler) as httpd:
         print(f"[{datetime.now()}] Running at http://localhost:{port}")
         print("Available endpoints:")
-        print(f"  http://localhost:{port}/licenses.csv")
-        print(f"  http://localhost:{port}/backupsets.csv")
-        print(f"  http://localhost:{port}/groups.csv")
+        print(f"  http://localhost:{port}/licenses")
+        print(f"  http://localhost:{port}/backupsets")
+        print(f"  http://localhost:{port}/groups")
         print(f"Data refresh interval: {interval} minutes")
         httpd.serve_forever()
 
@@ -144,7 +144,7 @@ def get_licenses(s: Session):
     ].str.replace(" %", "")
     df["Ratio"] = df["Volume externalisé"] / df["Quota"] * 100
     df["Ratio"] = df["Ratio"].round(1)
-    return df.to_csv(index=False)
+    return df.to_json()
 
 
 def get_backupsets(s: Session):
@@ -160,7 +160,7 @@ def get_backupsets(s: Session):
     }
     df.rename(columns=mapping, inplace=True)
     df.query('Etat != "Ok"', inplace=True)
-    return df.to_csv(index=False)
+    return df.to_json()
 
 
 def get_groups(s: Session):
@@ -177,7 +177,7 @@ def get_groups(s: Session):
     df["Utilisé"] = df["Utilisé"].str.replace(",", ".").astype(float)
     df["Ratio"] = df["Utilisé"] / df["Quota"] * 100
     df["Ratio"] = df["Ratio"].round(1)
-    return df.to_csv(index=False)
+    return df.to_json()
 
 
 def update_data(s: Session, interval):
@@ -185,22 +185,19 @@ def update_data(s: Session, interval):
         print(f"[{datetime.now()}] Updating data...")
 
         # Update licenses
-        data = get_licenses(s)
         with data_lock:
-            csv_data["licenses"] = data
-        print(f"[{datetime.now()}] Updated licenses.csv in memory")
+            data["licenses"] = get_licenses(s)
+        print(f"[{datetime.now()}] Updated licenses in memory")
 
         # Update licenses
-        data = get_backupsets(s)
         with data_lock:
-            csv_data["backupsets"] = data
-        print(f"[{datetime.now()}] Updated backupsets.csv in memory")
+            data["backupsets"] = get_backupsets(s)
+        print(f"[{datetime.now()}] Updated backupsets in memory")
 
         # Update groups
-        data = get_groups(s)
         with data_lock:
-            csv_data["groups"] = data
-        print(f"[{datetime.now()}] Updated groups.csv in memory")
+            data["groups"] = get_groups(s)
+        print(f"[{datetime.now()}] Updated groups in memory")
 
         # Wait time interval before updating again
         time.sleep(interval * 60)
