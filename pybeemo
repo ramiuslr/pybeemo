@@ -3,15 +3,36 @@
 import http.server
 import io
 import os
+import signal
 import socketserver
 import sys
 import time
+import logging
 from datetime import datetime
 from threading import Lock, Thread
 
 import pandas as pd
 from dotenv import load_dotenv
+from fastapi import FastAPI
 from requests import Session
+
+
+# Configure logging system
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+
+# Enable quick restart in docker
+app = FastAPI()
+def shutdown_handler(signum, frame):
+    logging.info("Received shutdown signal")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, shutdown_handler)
+signal.signal(signal.SIGINT, shutdown_handler)
+
 
 # Global variables
 data_lock = Lock()
@@ -49,6 +70,16 @@ class BeemoHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data.encode("utf-8"))
 
+    def log_message(self, format, *args):
+        logging.info(
+            "%s - - [%s] %s"
+            % (
+                self.address_string(),
+                self.log_date_time_string(),
+                format % args,
+            )
+        )
+
 
 def main():
     # Read parameters from env
@@ -56,19 +87,19 @@ def main():
 
     username = os.getenv("PYBEEMO_USER")
     if not username:
-        print("ERROR: Please set username")
+        logging.error("Please set username")
         sys.exit(1)
 
     password = os.getenv("PYBEEMO_PASSWORD")
     if not password:
-        print("ERROR: Please set a password")
+        logging.error("Please set a password")
         sys.exit(1)
 
     port = 8000
 
     interval = os.getenv("PYBEEMO_INTERVAL")
     if not interval:
-        print("No interval provided, setting default (30)")
+        logging.info("No interval provided, setting default (30)")
         interval = 30
     else:
         interval = int(interval)
@@ -84,12 +115,12 @@ def main():
     # Start HTTP server
     Handler = BeemoHandler
     with socketserver.TCPServer(("", port), Handler) as httpd:
-        print(f"[{datetime.now()}] Running at http://localhost:{port}")
-        print("Available endpoints:")
-        print(f"  http://localhost:{port}/licenses.csv")
-        print(f"  http://localhost:{port}/backupsets.csv")
-        print(f"  http://localhost:{port}/groups.csv")
-        print(f"Data refresh interval: {interval} minutes")
+        logging.info(f"[{datetime.now()}] Running at http://localhost:{port}")
+        logging.info("Available endpoints:")
+        logging.info(f"  http://localhost:{port}/licenses.csv")
+        logging.info(f"  http://localhost:{port}/backupsets.csv")
+        logging.info(f"  http://localhost:{port}/groups.csv")
+        logging.info(f"Data refresh interval: {interval} minutes")
         httpd.serve_forever()
 
 
@@ -104,7 +135,7 @@ def login(s: Session, username: str, password: str) -> bool:
 
     # Handle failed login checking response url
     if r.url == "https://client.beemotechnologie.com/login.php":
-        print("Login failure, please check username and password")
+        logging.error("Login failure, please check username and password")
         sys.exit(1)
 
 
@@ -182,25 +213,25 @@ def get_groups(s: Session):
 
 def update_data(s: Session, interval):
     while True:
-        print(f"[{datetime.now()}] Updating data...")
+        logging.info(f"[{datetime.now()}] Updating data...")
 
         # Update licenses
         data = get_licenses(s)
         with data_lock:
             csv_data["licenses"] = data
-        print(f"[{datetime.now()}] Updated licenses.csv in memory")
+        logging.info(f"[{datetime.now()}] Updated licenses.csv in memory")
 
         # Update licenses
         data = get_backupsets(s)
         with data_lock:
             csv_data["backupsets"] = data
-        print(f"[{datetime.now()}] Updated backupsets.csv in memory")
+        logging.info(f"[{datetime.now()}] Updated backupsets.csv in memory")
 
         # Update groups
         data = get_groups(s)
         with data_lock:
             csv_data["groups"] = data
-        print(f"[{datetime.now()}] Updated groups.csv in memory")
+        logging.info(f"[{datetime.now()}] Updated groups.csv in memory")
 
         # Wait time interval before updating again
         time.sleep(interval * 60)
